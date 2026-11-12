@@ -7,11 +7,11 @@ import {
 
 type StockRecord = {
   date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
+  open: number | string | null;
+  high: number | string | null;
+  low: number | string | null;
+  close: number | string | null;
+  volume?: number | string | null;
 };
 
 type Props = {
@@ -19,16 +19,86 @@ type Props = {
   currency?: string;
 };
 
+type ValidRecord = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
 function StockChart({ history, currency = "$" }: Props) {
   const candleRef = useRef<HTMLDivElement>(null);
   const lineRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!history?.length || !candleRef.current || !lineRef.current) {
+    const candleElement = candleRef.current;
+    const lineElement = lineRef.current;
+
+    if (!history?.length || !candleElement || !lineElement) {
       return;
     }
 
-    const candleChart = createChart(candleRef.current, {
+    // Step 1: Remove records containing null or missing OHLC values
+    const normalized: ValidRecord[] = history
+      .filter((item) => {
+        return (
+          item != null &&
+          item.date != null &&
+          item.open != null &&
+          item.high != null &&
+          item.low != null &&
+          item.close != null
+        );
+      })
+      .map((item) => ({
+        date: String(item.date).slice(0, 10),
+        open: Number(item.open),
+        high: Number(item.high),
+        low: Number(item.low),
+        close: Number(item.close),
+      }))
+      .filter((item) => {
+        return (
+          /^\d{4}-\d{2}-\d{2}$/.test(item.date) &&
+          [
+            item.open,
+            item.high,
+            item.low,
+            item.close,
+          ].every(Number.isFinite) &&
+          item.open > 0 &&
+          item.high > 0 &&
+          item.low > 0 &&
+          item.close > 0 &&
+          item.high >= item.low &&
+          item.high >= item.open &&
+          item.high >= item.close &&
+          item.low <= item.open &&
+          item.low <= item.close
+        );
+      });
+
+    // Step 2: Remove duplicate dates and sort records
+    const uniqueMap = new Map<string, ValidRecord>();
+
+    normalized.forEach((item) => {
+      uniqueMap.set(item.date, item);
+    });
+
+    const validHistory = Array.from(uniqueMap.values()).sort(
+      (a, b) => a.date.localeCompare(b.date)
+    );
+
+    console.log("Valid chart records:", validHistory.length);
+
+    if (validHistory.length === 0) {
+      return;
+    }
+
+    // Step 3: Create Candlestick Chart
+    const candleChart = createChart(candleElement, {
+      width: candleElement.clientWidth,
       height: 320,
       layout: {
         background: { color: "#0f172a" },
@@ -56,8 +126,8 @@ function StockChart({ history, currency = "$" }: Props) {
     });
 
     candles.setData(
-      history.map((item) => ({
-        time: item.date,
+      validHistory.map((item) => ({
+        time: item.date as `${number}-${number}-${number}`,
         open: item.open,
         high: item.high,
         low: item.low,
@@ -65,7 +135,9 @@ function StockChart({ history, currency = "$" }: Props) {
       }))
     );
 
-    const lineChart = createChart(lineRef.current, {
+    // Step 4: Create Price History Line Chart
+    const lineChart = createChart(lineElement, {
+      width: lineElement.clientWidth,
       height: 280,
       layout: {
         background: { color: "#0f172a" },
@@ -89,30 +161,35 @@ function StockChart({ history, currency = "$" }: Props) {
     });
 
     line.setData(
-      history.map((item) => ({
-        time: item.date,
+      validHistory.map((item) => ({
+        time: item.date as `${number}-${number}-${number}`,
         value: item.close,
       }))
     );
 
+    // Step 5: Fit charts to available data
     candleChart.timeScale().fitContent();
     lineChart.timeScale().fitContent();
 
+    // Step 6: Responsive chart sizing
     const resizeObserver = new ResizeObserver(() => {
-      if (candleRef.current && lineRef.current) {
+      if (candleElement.clientWidth > 0) {
         candleChart.applyOptions({
-          width: candleRef.current.clientWidth,
+          width: candleElement.clientWidth,
         });
+      }
 
+      if (lineElement.clientWidth > 0) {
         lineChart.applyOptions({
-          width: lineRef.current.clientWidth,
+          width: lineElement.clientWidth,
         });
       }
     });
 
-    resizeObserver.observe(candleRef.current);
-    resizeObserver.observe(lineRef.current);
+    resizeObserver.observe(candleElement);
+    resizeObserver.observe(lineElement);
 
+    // Step 7: Cleanup
     return () => {
       resizeObserver.disconnect();
       candleChart.remove();
@@ -126,9 +203,11 @@ function StockChart({ history, currency = "$" }: Props) {
         <h2 className="mb-2 text-xl font-bold text-white">
           Candlestick Chart
         </h2>
+
         <p className="mb-4 text-sm text-slate-400">
           Open, High, Low and Close prices
         </p>
+
         <div ref={candleRef} className="w-full" />
       </div>
 
@@ -136,9 +215,11 @@ function StockChart({ history, currency = "$" }: Props) {
         <h2 className="mb-2 text-xl font-bold text-white">
           Price History
         </h2>
+
         <p className="mb-4 text-sm text-slate-400">
           Closing price movement · {currency}
         </p>
+
         <div ref={lineRef} className="w-full" />
       </div>
     </div>
