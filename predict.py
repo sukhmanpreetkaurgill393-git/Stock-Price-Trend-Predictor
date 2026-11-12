@@ -80,12 +80,23 @@ def predict_stock(ticker="RELIANCE.NS", mode="binary"):
     feature_columns = [c for c in feature_df.columns if c not in excluded_columns]
     feature_df = feature_df.replace([np.inf, -np.inf], np.nan)
 
-    # Retain the newest session to forecast tomorrow
-    latest_unlabeled = feature_df[
-        feature_df["Target"].isna() & feature_df[feature_columns].notna().all(axis=1)
+    # Clean feature values
+    feature_df = feature_df.replace([np.inf, -np.inf], np.nan)
+
+    # Latest session with all required features available
+    valid_feature_rows = feature_df[
+        feature_df[feature_columns].notna().all(axis=1)
     ]
 
-    clean_train_data = feature_df.dropna(subset=["Target"] + feature_columns)
+    if valid_feature_rows.empty:
+        return None
+
+    latest_row = valid_feature_rows.iloc[[-1]]
+
+    # Historical rows with known targets are used for training
+    clean_train_data = feature_df.dropna(
+        subset=["Target"] + feature_columns
+    )
 
     if len(clean_train_data) < 100:
         return None
@@ -148,10 +159,7 @@ def predict_stock(ticker="RELIANCE.NS", mode="binary"):
     results.to_csv("model_predictions.csv")
 
     # Next-Day Prediction
-    if not latest_unlabeled.empty:
-        latest_row = latest_unlabeled.iloc[[-1]]
-    else:
-        latest_row = clean_train_data.iloc[[-1]]
+# latest_row is already selected from valid_feature_rows above
 
     latest_date = (
         latest_row.index[-1].strftime("%Y-%m-%d")
