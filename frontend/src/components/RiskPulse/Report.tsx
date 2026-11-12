@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { BookOpen, Ruler, FlaskConical, FileCode2, Download, Camera, CheckCircle2, Quote } from "lucide-react";
-import { STOCKS, WINDOWS, analyze, windowSeries, level } from "@/lib/risk";
+import { STOCKS, WINDOWS, analyze, windowSeries, level } from "./risk";
 
 const TABS = [
   { key: "research", label: "Research", icon: BookOpen },
